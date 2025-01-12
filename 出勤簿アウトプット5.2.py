@@ -13,11 +13,8 @@
 （第１２７行コード）↓
 for row in range(2, 152):
 
-
 2021.9.11更新：
 性別欄自動追加できるようになりました。
-
-
 
 2022.4.30　4.5UPDATE
 ルメールさん　食事×
@@ -34,7 +31,6 @@ for row in range(2, 152):
 """
 
 # import PySimpleGUI as sg　　※　v4.1以降：PySimpleGUIはたまにフリーズするので、使用中止。twinkerに変更しました。
-
 
 import datetime
 import openpyxl
