@@ -1,15 +1,22 @@
 from paddleocr import PaddleOCR, draw_ocr
-# Paddleocr supports Chinese, English, French, German, Korean and Japanese
-# You can set the parameter `lang` as `ch`, `en`, `french`, `german`, `korean`, `japan`
-# to switch the language model in order
-ocr = PaddleOCR(use_angle_cls=False, lang="ch") # need to run only once to download and load model into memory
+import re
+from PIL import Image
+
+# 全角字符到半角字符的转换表
+def full_width_to_half_width(text):
+    full_width_chars = "．！？，。＠＃＄％＆＊（）＋－＝｜＜＞＿＾｛｝［］；：’＂＜＞"
+    half_width_chars = ".!?,-@#$%&*()+-=_|<>^{}[];:'\"<>"
+    trans = str.maketrans(full_width_chars, half_width_chars)
+    return text.translate(trans)
+
+# 去掉“当日”字样
+def remove_todays_word(text):
+    return text.replace('当日', '')
+
+# PaddleOCR初始化
+ocr = PaddleOCR(use_angle_cls=False, lang="ch")  # 只需运行一次，下载和加载模型到内存
 img_path = r'C:\Users\timaz\Documents\PythonFile\pd2\example1.jpg'
 result = ocr.ocr(img_path, cls=False)
-
-
-
-
-import re
 
 # 初始化存储结果的列表
 attendance_data = []
@@ -17,13 +24,13 @@ attendance_data = []
 # 定义时间分类的 X 坐标范围
 time_ranges = {
     "attendance": (365, 475),   # 出勤时间
-    "lunch_start": (635, 710), # 午休开始时间
-    "lunch_end": (734, 810),   # 午休结束时间
-    "leave": (500, 610)        # 下班时间
+    "lunch_start": (635, 710),  # 午休开始时间
+    "lunch_end": (725, 810),    # 午休结束时间
+    "leave": (500, 610)         # 下班时间
 }
 
 # Y 坐标误差范围
-y_tolerance = 10
+y_tolerance = 20
 
 # 遍历 OCR 结果
 for idx in range(len(result)):
@@ -32,6 +39,8 @@ for idx in range(len(result)):
 
     for line in res:
         text = line[1][0]  # 获取文本内容
+        text = full_width_to_half_width(text)  # 转换全角字符为半角字符
+        text = remove_todays_word(text)  # 去掉“当日”字样
         x_coord = int(line[0][0][0])  # 获取第一个点的 X 坐标
         y_coord = int(line[0][0][1])  # 获取第一个点的 Y 坐标
 
@@ -98,11 +107,7 @@ for data in attendance_data:
     for time_type, time_list in data["times"].items():
         print(f"  {time_type.capitalize()}: {', '.join(time_list)}")
 
-
-
-
 # draw result
-from PIL import Image
 result = result[0]
 image = Image.open(img_path).convert('RGB')
 boxes = [line[0] for line in result]
