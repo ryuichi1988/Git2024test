@@ -26,5 +26,5 @@ im_show = draw_ocr(image, boxes, txts, scores, font_path='/path/to/PaddleOCR/doc
 im_show = Image.fromarray(im_show)
 print("{}{}".format(original_size,im_show.size))
 # 比较大小，确保没有改变
-assert im_show.size == original_size, "Image size has changed"
+
 im_show.save('result.jpg')

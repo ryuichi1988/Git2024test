@@ -1,4 +1,4 @@
-from paddleocr import PaddleOCR, draw_ocr
+from paddleocr import PaddleOCR
 import re
 
 # 初始化OCR
@@ -6,50 +6,44 @@ ocr = PaddleOCR(use_angle_cls=False, lang="ch")  # 设置OCR模型为中文
 img_path = r'C:\Users\timaz\Documents\PythonFile\pd2\example1.jpg'  # 设置图片路径
 result = ocr.ocr(img_path, cls=False)  # 执行OCR识别
 
-# 用于处理日期、出勤、午休和下班时间的函数
+
+# 用于处理时间的函数
 def extract_times(data):
     # 用于存储最终结果
     result = []
 
     # 遍历每一条记录
+    attendance = ''
+    lunch_start = ''
+    lunch_end = ''
+    leave = ''
+    date = ''
+
     for entry in data:
-        # 获取文本内容，entry[1][0] 是文本内容
-        text = entry[1][0]  # OCR提取的文本内容
+        text = entry[1][0]
+        print(text)# OCR提取的文本内容
+        coordinates = entry[0][0]  # 坐标信息
 
-        # 获取日期
-        date_match = re.match(r"(\d{1,2}/\d{1,2})", text)  # 使用正则提取日期
-        date = date_match.group(1) if date_match else ""
+        # 根据X坐标范围分类
+        print(entry[0])
+        x_min, x_max = coordinates[0][0], coordinates[2][0]  # 获取X轴的最小值和最大值
 
-        # 初始化时间变量
-        attendance = ''
-        lunch_start = ''
-        lunch_end = ''
-        leave = ''
+        if 365 <= x_min <= 475:  # 出勤时间
+            attendance = text.replace('当日', '').strip()
+        elif 635 <= x_min <= 760:  # 午休开始时间
+            lunch_start = text.replace('当日', '').strip()
+        elif 720 <= x_min <= 840:  # 午休结束时间
+            lunch_end = text.replace('当日', '').strip()
+        elif 500 <= x_min <= 610:  # 下班时间
+            leave = text.replace('当日', '').strip()
 
-        # 提取出勤时间
-        attendance_match = re.search(r'(\d{1,2}:\d{2})', text)  # 查找出勤时间
-        if attendance_match:
-            attendance = attendance_match.group(1)
+        # 根据日期标记
+        date_match = re.match(r"(\d{1,2}/\d{1,2})", text)  # 查找日期
+        if date_match:
+            date = date_match.group(1)
 
-        # 提取午休开始和结束时间
-        lunch_match = re.findall(r'(\d{1,2}:\d{2})(当日)?', text)  # 查找午休时间段
-        if lunch_match:
-            lunch_times = ', '.join([match[0] for match in lunch_match])  # 合并所有的午休时间
-            lunch_times = lunch_times.replace('当日', '').strip()
-
-            # 智能拆分午休开始和结束时间
-            if ',' in lunch_times:
-                lunch_start, lunch_end = lunch_times.split(',')
-            else:
-                lunch_start = lunch_times  # 只有一个时间则作为开始时间
-
-        # 提取下班时间
-        leave_match = re.search(r'(\d{1,2}:\d{2})', text)  # 查找下班时间
-        if leave_match:
-            leave = leave_match.group(1)
-
-        # 添加结果
-        if date:  # 只有在存在日期的情况下才添加结果
+        # 将结果添加到列表
+        if date:
             result.append({
                 "Date": date,
                 "Attendance": attendance,
@@ -59,6 +53,7 @@ def extract_times(data):
             })
 
     return result
+
 
 # 提取时间数据
 extracted_times = extract_times(result)
