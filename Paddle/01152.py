@@ -5,7 +5,7 @@ from PIL import Image
 ocr = PaddleOCR(use_angle_cls=False, lang="ch")
 
 # Load image and perform OCR
-img_path = r'C:\Users\timaz\Documents\PythonFile\pd2\example1.jpg'
+img_path = r'C:\Users\timaz\Documents\PythonFile\pd2\example5.jpg'
 result = ocr.ocr(img_path, cls=False)
 
 # Print OCR result

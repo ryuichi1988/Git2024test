@@ -1,13 +1,18 @@
 from paddleocr import PaddleOCR, draw_ocr
 import re
-from PIL import Image
+from pdf2image import convert_from_path
+import os
+
+# PaddleOCR初始化
+ocr = PaddleOCR(use_angle_cls=False, lang="ch")  # 只需运行一次，加载模型到内存
+
+# PDF路径
+pdf_path = r'C:\Users\timaz\Documents\PythonFile\pd2\example3.pdf'
 
 # 全角字符到半角字符的转换表
 def full_width_to_half_width(text):
-    # full_width_chars = "．！？，。＠＃＄％＆＊（）＋－＝｜＜＞＿＾｛｝［］；：’＂＜＞"
     full_width_chars = "："
     half_width_chars = ":"
-    # half_width_chars = ".!?,-@#$%&*()+-=_|<>^{}[];:'\"<>"
     trans = str.maketrans(full_width_chars, half_width_chars)
     return text.translate(trans)
 
@@ -16,14 +21,6 @@ def remove_todays_word(text):
     text = text.replace('当日', '')
     text = text.replace('前日', '')
     return text
-
-# PaddleOCR初始化
-ocr = PaddleOCR(use_angle_cls=False, lang="ch")  # 只需运行一次，下载和加载模型到内存
-img_path = r'C:\Users\timaz\Documents\PythonFile\pd2\example6.png'
-result = ocr.ocr(img_path, cls=False)
-
-# 初始化存储结果的列表
-attendance_data = []
 
 # 定义时间分类的 X 坐标范围
 time_ranges = {
@@ -34,19 +31,24 @@ time_ranges = {
 }
 
 # Y 坐标误差范围
-y_tolerance = 20
+y_tolerance = 15
 
-# 遍历 OCR 结果
-for idx in range(len(result)):
-    res = result[idx]
-    grouped_lines = {}  # 用于按 Y 坐标分组的字典
+# 初始化存储结果的列表
+attendance_data = []
 
-    for line in res:
-        print(line) #原始OCR数据
+# 逐页转换并进行 OCR 处理
+images = convert_from_path(pdf_path, dpi=300)
+for page_num, image in enumerate(images, start=1):
+    # OCR 处理
+    result = ocr.ocr(image, cls=False,det=False) # det参数控制。
+
+    # 按 Y 坐标分组
+    grouped_lines = {}
+    for line in result[0]:
         text = line[1][0]  # 获取文本内容
         text = full_width_to_half_width(text)  # 转换全角字符为半角字符
         text = remove_todays_word(text)  # 去掉“当日”字样
-        print(text)
+
         x_coord = int(line[0][0][0])  # 获取第一个点的 X 坐标
         y_coord = int(line[0][0][1])  # 获取第一个点的 Y 坐标
 
@@ -112,13 +114,3 @@ for data in attendance_data:
     print(f"Date: {data['date']}")
     for time_type, time_list in data["times"].items():
         print(f"  {time_type.capitalize()}: {', '.join(time_list)}")
-
-# draw result
-result = result[0]
-image = Image.open(img_path).convert('RGB')
-boxes = [line[0] for line in result]
-txts = [line[1][0] for line in result]
-scores = [line[1][1] for line in result]
-im_show = draw_ocr(image, boxes, txts, scores, font_path='/path/to/PaddleOCR/doc/fonts/simfang.ttf')
-im_show = Image.fromarray(im_show)
-im_show.save('result.jpg')
