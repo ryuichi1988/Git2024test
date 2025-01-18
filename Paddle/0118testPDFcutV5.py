@@ -1,5 +1,6 @@
 import re
 import fitz
+import openpyxl
 from paddleocr import PaddleOCR
 from openpyxl import Workbook
 
@@ -79,6 +80,22 @@ def check_y_coord_consistency(times_collected, threshold=5) -> bool:
     return (max(ys) - min(ys)) <= threshold
 
 
+def zero_pad_time(time_str):
+    """
+    将 "6:06" 转换为 "06:06"；"0:15" 转换为 "00:15"；
+    对正确的 "HH:MM" 格式进行小时的零补齐，分钟部分若原本为两位数字则不变。
+    如果不是 "H:MM" 或 "HH:MM" 格式，则原样返回。
+    """
+    pattern = r'^(\d{1,2}):(\d{2})$'
+    match = re.match(pattern, time_str)
+    if match:
+        hour, minute = match.groups()
+        # 小时补零到两位
+        hour = hour.zfill(2)
+        # minute 部分已是两位数字，所以保持不变
+        return f"{hour}:{minute}"
+    return time_str
+
 # ============================ 主逻辑：OCR + 数据收集 ============================#
 
 pdf_path = r'C:\Users\timaz\Documents\PythonFile\pd2\example6.pdf'
@@ -124,8 +141,11 @@ with fitz.open(pdf_path) as pdf:
 
             # 1) 判断是否含 "氏名"
             if "氏名" in text:
+                text = text.replace(":", '')
+                text = text.replace("：", '')
+                text = text.replace("氏名", '')
                 name_now = text  # 或做进一步截取提取真实姓名
-                print("发现氏名:", name_now)
+                print("氏名:", name_now)
                 continue
 
             # 2) 判断是否为日期
@@ -160,6 +180,10 @@ with fitz.open(pdf_path) as pdf:
                 if not current_date:
                     current_date = "XX/XX"
 
+                t1 = zero_pad_time(t1)
+                t2 = zero_pad_time(t2)
+                t3 = zero_pad_time(t3)
+                t4 = zero_pad_time(t4)
                 row_data = (name_now, current_date, t1, t2, t3, t4)
                 rows_data.append(row_data)
                 print("收集到一条完整记录:", row_data)
@@ -172,8 +196,10 @@ for rd in rows_data:
 
 # ============================ 写入 Excel 示例 ============================#
 
-wb = Workbook()
-ws = wb.active
+wb = openpyxl.load_workbook("PDtest.xlsx")
+source = wb["99999　ニッセープロダクツ"]
+ws = wb.copy_worksheet(source)
+
 
 # Sheet 名称：取收集到的最后一个姓名，如果没有则用“结果”
 if rows_data:
@@ -181,6 +207,8 @@ if rows_data:
     ws.title = sheet_title
 else:
     ws.title = "结果"
+
+ws["D4"].value = name_now
 
 # 将 rows_data 写入 Excel：
 # 规则：日期 -> A 列；时间 -> C~F 列；行号 = 8 + 日（1 日 -> 第 9 行）
