@@ -3,6 +3,28 @@ import fitz
 import openpyxl
 from paddleocr import PaddleOCR
 from datetime import datetime
+import tkinter as tk
+from tkinter import messagebox
+from tkinter import filedialog
+
+MAX_X_DISTANCE = 300
+
+nowtime = datetime.now()
+if nowtime.day < 10:
+    nowMonth = nowtime.month - 1
+    if nowMonth == 0:  # 处理跨年的情况
+        nowMonth = 12
+else:
+    nowMonth = nowtime.month
+nowMonth = str(nowMonth).zfill(2)
+print("処理中：{}月".format(nowMonth))
+
+root = tk.Tk()
+root.withdraw()
+
+
+pdf_path = filedialog.askopenfilename()
+print(pdf_path)
 
 
 # ============================ 辅助函数 ============================#
@@ -16,11 +38,15 @@ def full_width_to_half_width(text: str) -> str:
 
 
 def process_date(text: str) -> str:
-    """匹配 '07/14' 或 '07-14' 格式，并返回日期部分。否则返回原文本。"""
-    date_pattern = r"\d{2}[/-]\d{2}"
+    """
+    匹配类似 '1日'、'14日' 的日期格式，返回 'MM/DD' 格式的日期。
+    其中 MM 为当前月份（两位数），DD 为提取到的日期（两位数）。
+    """
+    date_pattern = r"(\d{1,2})日"  # 匹配 1-2 位数字，后跟 '日'
     match = re.match(date_pattern, text)
     if match:
-        return match.group()
+        day = match.group(1).zfill(2)  # 补零，确保日是两位数
+        return f"{nowMonth}/{day}"     # 返回 'MM/DD' 格式
     return text
 
 
@@ -61,7 +87,7 @@ def zero_pad_time(time_str):
 
 # ============================ 主逻辑 ============================#
 
-pdf_path = r'C:\Users\timaz\Documents\PythonFile\pd2\pd2.pdf'
+# pdf_path = r'C:\Users\timaz\Documents\PythonFile\pd2\pd2.pdf'
 
 ocr = PaddleOCR(
     use_angle_cls=False,
@@ -69,7 +95,7 @@ ocr = PaddleOCR(
     # table_algorithm='TableAttn',
     # table_max_len=488,
     #  轻量模型等可自行指定
-    lang='ch',
+    lang='japan',
 )
 
 wb = openpyxl.load_workbook("PDtestM.xlsm",keep_vba=True)
@@ -95,7 +121,7 @@ with fitz.open(pdf_path) as pdf:
         page = pdf.load_page(page_num)
         matrix = fitz.Matrix(200 / 72, 200 / 72)
         width, height = page.rect.width, page.rect.height
-        crop_rect = fitz.Rect(width * 0.0, height * 0.15, width * 0.48, height * 0.75)
+        crop_rect = fitz.Rect(width * 0.0, height * 0.0, width * 0.6, height * 1)
         page.set_cropbox(crop_rect)
 
         pix = page.get_pixmap(matrix=matrix)
@@ -148,10 +174,32 @@ with fitz.open(pdf_path) as pdf:
 
 
 
-            # 如果文本包含 "氏名"
-            if "氏名" in text:
-                tmp = text.replace(":", '').replace("：", '').replace("氏名", '')
+            # 如果文本包含 "氏名NP"
+            if "NP" in text:
+                tmp = text
                 name_now = tmp.strip() if tmp else "未识别氏名"
+
+                j = i + 1
+                while j < len(result[0]):
+                    next_text = result[0][j][1][0]
+                    next_coords = result[0][j][0]
+                    next_centerX = sum(pt[0] for pt in next_coords) / 4
+                    next_centerY = sum(pt[1] for pt in next_coords) / 4
+
+                    # 如果 Y 坐标相近，且 X 坐标差值在 300 以内，拼接名字
+                    if abs(next_centerY - center_pointY) < THRESHOLD_Y and abs(
+                            next_centerX - center_pointX) < MAX_X_DISTANCE:
+                        name_now += next_text.strip()
+                        center_pointX = next_centerX  # 更新 X 坐标基准
+                        j += 1
+                    else:
+                        break
+
+
+
+
+
+
                 try:
                     testnumber = number_name_dict[name_now][0]
                     testname = number_name_dict[name_now][1]
@@ -159,7 +207,14 @@ with fitz.open(pdf_path) as pdf:
                     testnumber = "不明"
                     testname = name_now
 
+                print(f"--- Page {page_num + 1} 收集到: {page_rows_data}")
                 continue
+
+            else: # if "NP" in text:  's else
+                try:
+                    name_now = tmp
+                except NameError:
+                    name_now = "先頭未定"
 
             # 如果文本包含日期
             dtmp = process_date(text)
