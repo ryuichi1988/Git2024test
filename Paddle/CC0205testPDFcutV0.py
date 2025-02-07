@@ -7,9 +7,39 @@ import tkinter as tk
 from tkinter import messagebox
 from tkinter import filedialog
 
-MAX_X_DISTANCE = 300
 
+# ============================ 初始化数据 ============================#
+ocr = PaddleOCR(
+    use_angle_cls=False,
+    lang='japan',
+)
+MAX_X_DISTANCE = 350  # 允许的最大 X 坐标距离，超过则认为不是同一行
+THRESHOLD_Y = 5  # 允许的 Y 坐标误差
+current_line_times = []
 nowtime = datetime.now()
+wb = openpyxl.load_workbook("PDtestM.xlsm", keep_vba=True)
+source = wb["99999　ニッセープロダクツ"]
+number_master_sheet = wb['Number_Master']
+number_name_dict = {}
+name_now = None
+current_date = None
+last_name = None  # 记录名字
+data_list = []  # 用于收集所有数据，直到姓名发生变化时才写入 Excel
+# ============================ 初始化数据 ============================#
+
+
+
+# ============================ 写入Master字典 ============================#
+for row in range(1, number_master_sheet.max_row + 1):
+    PD_number = number_master_sheet.cell(row=row, column=1).value
+    staff_name = number_master_sheet.cell(row=row, column=2).value
+    NP_number = number_master_sheet.cell(row=row, column=3).value
+    temp = {PD_number: (NP_number, staff_name)}
+    number_name_dict.update(temp)
+# ============================ 写入Master字典 ============================#
+
+
+
 if nowtime.day < 10:
     nowMonth = nowtime.month - 1
     if nowMonth == 0:  # 处理跨年的情况
@@ -28,45 +58,48 @@ print(pdf_path)
 # ============================ 辅助函数 ============================#
 
 
-def write_to_excel(ws, name, date, time_list):
+def write_to_excel(ws, name, data_list):
     """
-    立即写入 Excel,一行データ = (名字, 日期, 時間リスト)
+    立即写入 Excel, 一行データ = (名字, 日期, 上班时间, 下班时间)
     """
-    if not time_list:
-        print(f"⚠️ 時間リストが空です: {name} - {date}")
-        return  # 時間データがない場合は書き込まない
+    if not data_list:
+        print(f"⚠️ 数据列表为空: {name}")
+        return  # 没有数据，不写入
 
-    # から日(DD)を日付から抽出する、例 "02/01" -> 1
-    match = re.match(r"\d{2}/(\d{2})", date)
-    if not match:
-        print(f"⚠️ 日付形式が間違っています: {date}")
-        return  # 日付形式が間違っている場合はスキップ
+    for date, time1, time2 in data_list:
+        # 解析日期，提取日(DD)
+        match = re.match(r"\d{2}/(\d{2})", date)
+        if not match:
+            print(f"⚠️ 日期格式错误: {date}")
+            continue  # 跳过错误日期
 
-    day = int(match.group(1))
-    row_idx = 8 + day  # Excel 行インデックス、例 1日 -> 9行, 2日 -> 10行, ..., 31日 -> 39行
+        day = int(match.group(1))
+        row_idx = 8 + day  # Excel 行索引，例如 1日 -> 9行, 2日 -> 10行, ..., 31日 -> 39行
 
-    # X 座標でソート
-    time_list.sort(key=lambda x: x[1])
+        ws[f"A{row_idx}"] = date  # A列 -> 日期
 
-    # 時間文字列を抽出し、ゼロパディングする
-    time_strs = [zero_pad_time(x[0]) for x in time_list]
-
-    # Excel に書き込む
-    ws[f"A{row_idx}"] = date  # A列 -> 日付
-    ws[f"B{row_idx}"] = name  # B列 -> 名前
-
-    # タイムスタンプを Excel に書き込む
-    for idx, tm_str in enumerate(time_strs):
-        col = chr(ord('C') + idx)  # 列名を計算
         try:
-            tobj = datetime.strptime(tm_str, "%H:%M").time()
-            ws[f"{col}{row_idx}"] = tobj
+            tobj = datetime.strptime(time1, "%H:%M").time()
+            ws[f"C{row_idx}"] = tobj
         except ValueError:
-            ws[f"{col}{row_idx}"] = tm_str  # 変換に失敗した場合は文字列を書き込む
+            # 若转换为时间失败，就原样写入
+            ws[f"C{row_idx}"] = time1
 
-    output_xlsx = "PD2Macro_2025_01.xlsm"
+        try:
+            tobj2 = datetime.strptime(time2, "%H:%M").time()
+            ws[f"D{row_idx}"] = tobj2
+        except ValueError:
+            # 若转换为时间失败，就原样写入
+            ws[f"D{row_idx}"] = time2
+
+
+
+    ws["D4"] = name  # 将姓名写入 D4
+    sheet_title = f"{page_num}_{name}"[:15]
+    ws.title = sheet_title
+    output_xlsx = "CCMacro_2025_{}.xlsm".format(nowMonth)
     wb.save(output_xlsx)
-    print(f"📄 已写入 Excel: {name} - {date} - {time_strs}")
+    print(f"📄 已写入 Excel: {name} - {len(data_list)} 条记录")
 
 
 def full_width_to_half_width(text: str) -> str:
@@ -127,34 +160,13 @@ def zero_pad_time(time_str):
 
 # ============================ 主ロジック ============================#
 
-ocr = PaddleOCR(
-    use_angle_cls=False,
-    lang='japan',
-)
-
-wb = openpyxl.load_workbook("PDtestM.xlsm", keep_vba=True)
-source = wb["99999　ニッセープロダクツ"]
-number_master_sheet = wb['Number_Master']
-number_name_dict = {}
-for row in range(1, number_master_sheet.max_row + 1):
-    PD_number = number_master_sheet.cell(row=row, column=1).value
-    staff_name = number_master_sheet.cell(row=row, column=2).value
-    NP_number = number_master_sheet.cell(row=row, column=3).value
-    temp = {PD_number: (NP_number, staff_name)}
-    number_name_dict.update(temp)
-
-name_now = None
-current_date = None
 
 
 
 with fitz.open(pdf_path) as pdf:
     for page_num in range(pdf.page_count):
 
-
-        # PDF ページを開く
         page = pdf.load_page(page_num)
-
         matrix = fitz.Matrix(200 / 72, 200 / 72)
         width, height = page.rect.width, page.rect.height
         crop_rect = fitz.Rect(width * 0.0, height * 0.0, width * 0.6, height * 1)
@@ -164,15 +176,16 @@ with fitz.open(pdf_path) as pdf:
         img_path = f"output\\PDFToPNG_PAGE_{page_num + 1}.png"
         pix.save(img_path)
 
-        # OCR 認識
-        print(f"\n開始OCR Page{page_num + 1}")
+        print(f"\n开始OCR Page{page_num + 1}")
         result = ocr.ocr(img_path, cls=False)
 
-        page_rows_data = []  # このページのすべての行データを保存 [(name, date, [times...])]
-        # ✅ 毎ページ開始時にのみ初期化、`for` ループ内でクリアしない
-        current_line_times = []
+
         current_line_refY = None
-        THRESHOLD_Y = 5  # 許容される上下の誤差
+
+        data_list = []  # 存储所有的 (日期, 时间1, 时间2)
+        time_list = []  # 暂存一行中的时间对
+        current_date = None  # 当前日期
+        last_name = None  # 记录上一个姓名
 
         for i, line in enumerate(result[0]):
             text = line[1][0]
@@ -180,107 +193,42 @@ with fitz.open(pdf_path) as pdf:
             center_pointX = sum(pt[0] for pt in coords) / 4
             center_pointY = sum(pt[1] for pt in coords) / 4
 
-            print(f"Page {page_num + 1} line {i}: center=({center_pointX:.1f}, {center_pointY:.1f}), text={text}")
-
-            # ✅ `current_line_refY` が空の場合のみ初期化
-            if current_line_refY is None:
-                current_line_refY = center_pointY
-            else:
-                # Y 座標の変化がしきい値を超えた場合、改行と判断
-                if abs(center_pointY - current_line_refY) > THRESHOLD_Y:
-                    if current_line_times:
-                        current_line_times.sort(key=lambda x: x[1])  # X 座標でソート
-                        page_rows_data.append((name_now, current_date, current_line_times[:]))
-                        print(f"改行、前の行は確定: {current_line_times}")
-                        print(f"完整信息:", name_now, current_date, current_line_times[:])
-                        current_line_times.clear()  # ✅ ここでクリア
-
-                    current_line_refY = center_pointY  # Y 参照値を更新
-
-            # ✅ 名前を解析
+            # **1️⃣ 提取姓名（NP 开头）**
             if "NP" in text:
-                tmp = text.strip()
-                name_now = tmp if tmp else "未識別氏名"
+                name_now = text.strip()
 
-                # 名前の連結処理
-                j = i + 1
-                while j < len(result[0]):
-                    next_text = result[0][j][1][0]
-                    next_coords = result[0][j][0]
-                    next_centerX = sum(pt[0] for pt in next_coords) / 4
-                    next_centerY = sum(pt[1] for pt in next_coords) / 4
+                # 结算上一个人的数据
+                if last_name and data_list:
+                    print(f"✅ 结算 {last_name} 的数据: {data_list}")
+                    ws = wb.copy_worksheet(source)
+                    write_to_excel(ws, last_name, data_list)
+                    data_list.clear()  # 清空数据
 
-                    if abs(next_centerY - center_pointY) < THRESHOLD_Y and next_centerX <= 300:
-                        name_now += next_text.strip()
-                        j += 1
-                    else:
-                        break
+                last_name = name_now  # 更新姓名
+                continue  # 继续下一行
 
-                try:
-                    testnumber = number_name_dict[name_now][0]
-                    testname = number_name_dict[name_now][1]
-                except KeyError:
-                    testnumber = "不明"
-                    testname = name_now
-
-                print(f"--- Page {page_num + 1} 収集: {page_rows_data}")
-                print(f"現在の current_line_times の値: {current_line_times}")
-
-                # ✅ 前の人のデータを確定
-                if page_rows_data:
-                    page_rows_data.append((name_now, current_date, current_line_times[:]))
-                    print(f"✅ {name_now} のデータを確定: {current_line_times}")
-                    write_to_excel(source, name_now, current_date, current_line_times)
-                    current_line_times.clear()
-
-                continue  # 次のテキストへ
-
-            else:
-                try:
-                    name_now = tmp
-                except NameError:
-                    name_now = "先頭未定"
-
-            # ✅ 日付を解析
+            # **2️⃣ 识别日期**
             dtmp = process_date(text)
             if dtmp != text:
-                current_date = dtmp
-                continue
+                current_date = dtmp  # 更新日期
+                time_list.clear()  # 清空时间缓存
+                continue  # 继续下一行
 
-            # ✅ 時間を解析
+            # **3️⃣ 识别时间**
             parsed = parse_times(text)
-            if not parsed:
-                continue  # 時間を解析できなかった場合はスキップ
+            if parsed:
+                time_list.extend(parsed)  # 加入时间列表
 
-            # ✅ 時間データの処理
-            for tm in parsed:
-                if current_line_refY is None:
-                    current_line_refY = center_pointY
-                    current_line_times.append((tm, center_pointX, center_pointY))
-                else:
-                    if abs(center_pointY - current_line_refY) > THRESHOLD_Y:
-                        if current_line_times:
-                            page_rows_data.append((name_now, current_date, current_line_times[:]))
-                            print(f"改行検出、前の行の時間: {current_line_times}")
+                # ⚠️ 只有两次时间才存入 data_list
+                if len(time_list) == 2:
+                    data_list.append((current_date, time_list[0], time_list[1]))  # (日期, 时间1, 时间2)
+                    time_list.clear()  # 清空，准备下一行
+                continue  # 继续下一行
 
-                        current_line_times.clear()
-                        current_line_refY = center_pointY
-                        current_line_times.append((tm, center_pointX, center_pointY))
-                    else:
-                        current_line_times.append((tm, center_pointX, center_pointY))
+        # **4️⃣ 处理最后一批数据**
+        if last_name and data_list:
+            print(f"✅ 最后结算 {last_name} 的数据: {data_list}")
+            ws = wb.copy_worksheet(source)
+            write_to_excel(ws, last_name, data_list)
 
-        # ✅ 最終行のデータを処理
-        if current_line_times:
-            page_rows_data.append((name_now, current_date, current_line_times[:]))
-            current_line_times.clear()
-
-        print(f"--- Page {page_num + 1} 収集: {page_rows_data}")
-
-        # ✅ Excel に書き込み
-        ws = wb.copy_worksheet(source)
-        if page_rows_data:
-            ws.title = page_rows_data[-1][0] or "結果"
-        else:
-            ws.title = "結果"
-
-print("全部処理完了。")
+print("全部处理完成。")
