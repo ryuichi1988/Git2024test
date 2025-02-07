@@ -80,17 +80,40 @@ def write_to_excel(ws, name, data_list):
 
         try:
             tobj = datetime.strptime(time1, "%H:%M").time()
-            ws[f"C{row_idx}"] = tobj
+
+            # 调整出勤时间（如果超过半点，进1到整点）
+            if tobj.minute > 30:
+                corrected_hour = tobj.hour + 1
+                corrected_time = f"{corrected_hour}:00"
+                corrected_time = datetime.strptime(time1, "%H:%M").time()
+
+            else:
+                corrected_time = tobj.strftime("%H:%M")
+
+
+            ws[f"C{row_idx}"] = corrected_time  # 写入修正后的时间
+
+            # 休息时间计算
+            if tobj.hour >= 18:  # 夜班
+                ws[f"E{row_idx}"] = "00:00"
+                ws[f"F{row_idx}"] = "01:00"
+            elif tobj.hour < 12:  # 白班
+                ws[f"E{row_idx}"] = "12:00"
+                ws[f"F{row_idx}"] = "13:00"
+
         except ValueError:
-            # 若转换为时间失败，就原样写入
-            ws[f"C{row_idx}"] = time1
+            ws[f"C{row_idx}"] = time1  # 若转换失败，则原样写入
 
         try:
             tobj2 = datetime.strptime(time2, "%H:%M").time()
-            ws[f"D{row_idx}"] = tobj2
+
+            # 仅当下班时间符合逻辑时才写入
+            if not ((tobj2.hour >= 23 and tobj2.minute >= 59) or (tobj2.hour == 0 and tobj2.minute <= 30) or (
+                    tobj2.hour < 12)):
+                ws[f"D{row_idx}"] = tobj2
+
         except ValueError:
-            # 若转换为时间失败，就原样写入
-            ws[f"D{row_idx}"] = time2
+            ws[f"D{row_idx}"] = time2  # 若转换失败，则原样写入
 
 
 
