@@ -6,6 +6,7 @@ from datetime import datetime
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import filedialog
+from tqdm import tqdm
 
 
 # ============================ 初始化数据 ============================#
@@ -51,8 +52,11 @@ print("処理中:{}月".format(nowMonth))
 
 root = tk.Tk()
 root.withdraw()
+root.lift()  # 提升窗口
+root.attributes('-topmost', True)  # 置顶窗口
 
 pdf_path = filedialog.askopenfilename()
+root.destroy()  # 关闭主窗口
 print(pdf_path)
 
 # ============================ 辅助函数 ============================#
@@ -81,36 +85,42 @@ def write_to_excel(ws, name, data_list):
         try:
             tobj = datetime.strptime(time1, "%H:%M").time()
 
-            # 调整出勤时间（如果超过半点，进1到整点）
-            if tobj.minute > 30:
-                corrected_hour = tobj.hour + 1
+            # 调整出勤时间（如果超过20分，进1到整点）
+            if tobj.minute > 20:
+                corrected_hour = (tobj.hour + 1) % 24 #你需要在 23:30 以后 的情况下，让小时变为 00，而不是 24。可以这样修改
+                """
+                示例测试
+                原始时间	结果
+                08:25	09:00
+                22:51	23:00
+                23:35	00:00
+                23:59	00:00
+                """
                 corrected_time = f"{corrected_hour}:00"
-                corrected_time = datetime.strptime(time1, "%H:%M").time()
+                corrected_time = datetime.strptime(corrected_time, "%H:%M").time()
 
             else:
-                corrected_time = tobj.strftime("%H:%M")
+                corrected_time = tobj
 
 
             ws[f"C{row_idx}"] = corrected_time  # 写入修正后的时间
 
             # 休息时间计算
-            if tobj.hour >= 18:  # 夜班
-                ws[f"E{row_idx}"] = "00:00"
-                ws[f"F{row_idx}"] = "01:00"
-            elif tobj.hour < 12:  # 白班
-                ws[f"E{row_idx}"] = "12:00"
-                ws[f"F{row_idx}"] = "13:00"
+            if corrected_time.hour >= 18 or corrected_time.hour == 0:  # 夜班,0時出勤は夜勤です。
+                ws[f"E{row_idx}"] = datetime.strptime("1:00", "%H:%M").time()
+                ws[f"F{row_idx}"] = datetime.strptime("2:00", "%H:%M").time()
+            elif corrected_time.hour < 12:  # 白班
+                ws[f"E{row_idx}"] = datetime.strptime("12:00", "%H:%M").time()
+                ws[f"F{row_idx}"] = datetime.strptime("13:00", "%H:%M").time()
+            else:
+                pass
 
         except ValueError:
             ws[f"C{row_idx}"] = time1  # 若转换失败，则原样写入
 
         try:
-            tobj2 = datetime.strptime(time2, "%H:%M").time()
-
-            # 仅当下班时间符合逻辑时才写入
-            if not ((tobj2.hour >= 23 and tobj2.minute >= 59) or (tobj2.hour == 0 and tobj2.minute <= 30) or (
-                    tobj2.hour < 12)):
-                ws[f"D{row_idx}"] = tobj2
+            time2 = datetime.strptime(time2, "%H:%M").time()
+            ws[f"D{row_idx}"] = time2 # 下班时间
 
         except ValueError:
             ws[f"D{row_idx}"] = time2  # 若转换失败，则原样写入
@@ -118,7 +128,7 @@ def write_to_excel(ws, name, data_list):
 
 
     ws["D4"] = name  # 将姓名写入 D4
-    sheet_title = f"{page_num}_{name}"[:15]
+    sheet_title = f"{page_num}_{name}"[:20]
     ws.title = sheet_title
     output_xlsx = "CCMacro_2025_{}.xlsm".format(nowMonth)
     wb.save(output_xlsx)
@@ -187,8 +197,14 @@ def zero_pad_time(time_str):
 
 
 with fitz.open(pdf_path) as pdf:
-    for page_num in range(pdf.page_count):
+    # pdf_pages = pdf.page_count  # 你的 PDF 总页数
+    # progress_bar0 = tqdm(range(pdf_pages), desc="ページOCR 处理中", ncols=80, position=0, leave=True)
+    # progress_bar1 = tqdm(range(pdf_pages), desc="個人OCR 处理中", ncols=80, position=1, leave=True)
 
+    for page_num in tqdm(range(pdf.page_count), desc="OCR読み取り中・・・", ncols=80,unit="ページ",position=0,leave=True):
+        # tqdm.write(f"\n开始 OCR Page {page_num + 1}")
+        # tqdm.write(f"📄 已写入 Excel: Page {page_num + 1}")
+        # tqdm(range(pdf.page_count), desc="OCR読み取り中・・・", ncols=80, unit="ページ", position=0, leave=True).update()
         page = pdf.load_page(page_num)
         matrix = fitz.Matrix(200 / 72, 200 / 72)
         width, height = page.rect.width, page.rect.height
@@ -210,11 +226,12 @@ with fitz.open(pdf_path) as pdf:
         current_date = None  # 当前日期
         last_name = None  # 记录上一个姓名
 
-        for i, line in enumerate(result[0]):
+        for i, line in tqdm(enumerate(result[0]),desc=f"{page_num}ページ内：OCR読み取り中・・・", ncols=80,unit="データ数",position=1,leave=True):
             text = line[1][0]
             coords = line[0]
             center_pointX = sum(pt[0] for pt in coords) / 4
             center_pointY = sum(pt[1] for pt in coords) / 4
+            print(f"読み取り中：{text}")
 
             # **1️⃣ 提取姓名（NP 开头）**
             if "NP" in text:
@@ -232,14 +249,19 @@ with fitz.open(pdf_path) as pdf:
 
             # **2️⃣ 识别日期**
             dtmp = process_date(text)
+            print(f"日付認識開始{dtmp}")
             if dtmp != text:
                 current_date = dtmp  # 更新日期
+                print(f"日付認識OK：{current_date}")
                 time_list.clear()  # 清空时间缓存
                 continue  # 继续下一行
 
             # **3️⃣ 识别时间**
             parsed = parse_times(text)
+            print(f"時間認識開始{parsed}")
+            print("時間数：",len(time_list))
             if parsed:
+                print(f"時間認識OK：{parsed}")
                 time_list.extend(parsed)  # 加入时间列表
 
                 # ⚠️ 只有两次时间才存入 data_list
