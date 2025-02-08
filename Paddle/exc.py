@@ -1,28 +1,33 @@
-from paddleocr import PaddleOCR
-from pdf2image import convert_from_path
-import os
+import pdfplumber
 
-# 初始化 PaddleOCR
-ocr = PaddleOCR(use_angle_cls=False, lang="ch")  # 支持多语言，可以指定 lang="en" 或其他语言
+pdf_path = "cc7.pdf"
 
-# PDF 文件路径
-pdf_path = r'C:\Users\timaz\Documents\PythonFile\pd2\example4.pdf'
-output_folder = "pdf_images"  # 保存 PDF 转换后的图片的目录
-os.makedirs(output_folder, exist_ok=True)
+with pdfplumber.open(pdf_path) as pdf:
+    for page in pdf.pages:
+        words = page.extract_words()  # 提取单词及坐标信息
 
-# 将 PDF 转换为图像
-images = convert_from_path(pdf_path, dpi=300, output_folder=output_folder)
+        lines = {}  # 存储按 Y 坐标分组的数据
+        y_threshold = 5  # 允许的 Y 轴误差范围
 
-# 遍历转换的图片并进行 OCR
-for page_num, image in enumerate(images, start=1):
-    # 保存图像文件（可选，用于调试）
-    image_path = os.path.join(output_folder, f"page_{page_num}.png")
-    image.save(image_path, "PNG")
+        for word in words:
+            x0, y0, x1, y1 = word["x0"], word["top"], word["x1"], word["bottom"]
+            text = word["text"]
 
-    # OCR 处理
-    result = ocr.ocr(image_path, cls=False)
+            # 按 Y 坐标分行，避免误合并
+            found = False
+            for y_key in lines.keys():
+                if abs(y_key - y0) < y_threshold:  # 误差在 5px 内，认为同一行
+                    lines[y_key].append((x0, text))
+                    found = True
+                    break
 
-    # 输出 OCR 结果
-    print(f"Page {page_num} OCR Results:")
-    for line in result[0]:  # 遍历识别结果
-        print("{}   {}".format(line[0],line[1]))
+            if not found:
+                lines[y0] = [(x0, text)]
+
+        # 按 Y 轴排序
+        sorted_lines = sorted(lines.items(), key=lambda item: item[0])
+
+        for y, words in sorted_lines:
+            words.sort()  # 按 X 坐标排序，保持正确顺序
+            line_text = " ".join([word[1] for word in words])
+            print("line:", line_text)  # 输出按行排序后的文本
