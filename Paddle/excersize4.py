@@ -23,6 +23,7 @@ print(pdf_path)
 # **🔹 合并相同名字的出勤记录**
 merged_data = {}
 
+Person_Sum_Time_List = []
 
 output_xlsx = "CCMacro_2025_02test.xlsm"
 # 在现有代码的 structured_array = ... 之后添加以下内容
@@ -117,12 +118,14 @@ def adjust_off_time(time_str):
 #　0SHEET書き込み作業
 def write_0sheet(wb):
     ws = wb["0SHEET"]
+    ws["D1"].value = opration_date
     # 修正列字母生成方式
     date_column_map = {day: get_column_letter(4 + day) for day in range(1, 32)}  # E=5对应day=1
 
     for row_idx, (name, np_number, records) in enumerate(structured_array, start=4):
         ws[f'C{row_idx}'] = np_number
         ws[f'D{row_idx}'] = name
+        ws[f'AN{row_idx}'] = Person_Sum_Time_List[row_idx-4]
 
         daily_hours = {}
 
@@ -212,8 +215,12 @@ if current_group:
 
 
 for name, records in structured_data:
+    print(name,records)
+
     # **🔴 如果 "name" 以 "合計" 结尾，则跳过**
     if name.endswith("合計"):
+        Person_Sum_Time = records[3]  # 個人合計の値をLISTに保存。
+        Person_Sum_Time_List.append(Person_Sum_Time)  # 個人合計の値をLISTに保存。
         print(f"Skipping: {name}")  # 调试输出
         continue
 
@@ -245,35 +252,46 @@ for name, records in structured_data:
     # **调整上班时间**
     for record in filtered_records:
         work_start_hour = record[1][:2]  # 时间段开始时间 (前 2 位小时)
+        arrival_time = record[2]
         arrival_hour, arrival_minute = map(int, record[2].split(":"))  # 上班时间
+        new_hour = arrival_hour
         print(name)
         print(name_now)
-        print(work_start_hour)
-        print(number_name_dict)
+        print(name,"start hour", work_start_hour)
+        print(name,"arrival hour", arrival_hour)
+        #print(number_name_dict)
         print(name)
         NP__number = find_NP_number(name,number_name_dict)
 
         # **如果上班时间早于时间段开始时间**
+        print("判断開始")
         try:
-            if work_start_hour == "00" and arrival_hour == 23:
+            if work_start_hour == "00" and arrival_hour > 19:
+                print("判断開始261yes",work_start_hour,arrival_hour)
+
                 arrival_hour = -1
 
             if arrival_hour < int(work_start_hour):
+                print("判断開始266yes",arrival_hour,work_start_hour)
                 new_hour = int(work_start_hour)
+                arrival_hour = None
+                work_start_hour = None
         except ValueError:
             final_mention_list.append((name,NP__number,record,"勤務区分エラーです。手動で確認し、出勤時間を修正してください。"))
             continue
 
             # **如果是 23 点，改为 00:00**
 
-
+        print(name,new_hour)
             # **修改上班时间**
         record[2] = f"{new_hour:02d}:00"
 
     # **合并相同名字的记录**
     if name in merged_data:
+        print("**合并相同名字的记录**291 if",name,merged_data)
         merged_data[name] = np.vstack((merged_data[name], filtered_records))
     else:
+        print("**合并相同名字的记录**294 else",name,merged_data)
         merged_data[name] = np.array(filtered_records, dtype=object)
 
 # **转换为 NumPy 数组**
@@ -309,7 +327,7 @@ for idx, (name, np_number, records) in enumerate(structured_array, start=1):
         new_ws = wb.copy_worksheet(source)
 
         # 设置工作表名称（NP号码_姓名）
-        sheet_title = f"{np_number}_{name}"[:31]  # Excel限制31字符
+        sheet_title = f"{idx}_{np_number}_{name}"[:31]  # Excel限制31字符
         new_ws.title = sheet_title
 
         # 写入固定单元格
