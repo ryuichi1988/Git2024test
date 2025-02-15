@@ -284,6 +284,7 @@ for name, records in structured_data:
         shift_start_time = custom_timedelta_parser(work_start_time)
         # 作業中
 
+
         arrival_time = record[2]
         arrival_hour, arrival_minute = map(int, record[2].split(":"))  # 上班时间
         new_hour = arrival_hour
