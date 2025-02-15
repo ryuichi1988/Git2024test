@@ -146,7 +146,15 @@ def adjust_off_time(time_str):
 #　0SHEET書き込み作業
 def write_0sheet(wb):
     ws = wb["0SHEET"]
-    ws["D1"].value = opration_date
+    sheet0_d1_value = opration_date.strftime("%Y年%m月")
+    ws["D1"].value = sheet0_d1_value
+    if len(structured_array) < 200:
+        for temp_row in range(len(structured_array) ,203 , 1):
+            ws.row_dimensions[temp_row].hidden = True
+    else:
+        final_mention_list.append("0sheetの行が足りない。ｽﾀｯﾌ数200超えています？？")
+
+
     # 修正列字母生成方式
     date_column_map = {day: get_column_letter(4 + day) for day in range(1, 32)}  # E=5对应day=1
 
@@ -178,7 +186,12 @@ def write_0sheet(wb):
 
                     # 计算总时间并扣除休息
                     total_delta = end - start
-                    work_delta = total_delta - timedelta(hours=1)  # 关键修改点
+                    if total_delta > timedelta(hours=3):
+                        work_delta = total_delta - timedelta(hours=1)  # 关键修改点
+                    else:
+                        work_delta = total_delta
+                        final_mention_list.append([name,np_number,record[0],work_delta,"実働少ないです。手動で確認お願いします。"])
+                        pass
 
                     # 处理负数工作时间
                     if work_delta.total_seconds() < 0:
@@ -279,10 +292,36 @@ for name, records in structured_data:
 
     # 重要ファンクション：出勤、退勤時間変換。
     for record in filtered_records:
+        NP__number = find_NP_number(name, number_name_dict)
         work_start_hour = record[1][:2]  # 时间段开始时间 (前 2 位小时)
         work_start_time = record[1][:4]  # 时间段开始时间 (前 2 位小时)
         shift_start_time = custom_timedelta_parser(work_start_time)
+        arrival_time = record[2]
+        temarrival_time = custom_timedelta_parser(arrival_time)
+        try:
+            if ":" in work_start_hour:
+                raise ValueError
+            else:
+                pass
+            if shift_start_time == timedelta(hours=0) and temarrival_time > timedelta(hours=19):
+                record[2] = (datetime.min + shift_start_time).strftime("%H:%M")
+            elif shift_start_time > temarrival_time:
+                record[2] = (datetime.min + shift_start_time).strftime("%H:%M")
+            else:
+                pass
+        except ValueError:
+            final_mention_list.append((name,NP__number,record,"勤務区分エラーです。手動で確認し、出勤時間を修正してください。"))
+
+
+
+
+
         # 作業中
+        """
+        
+        
+        
+        
 
 
         arrival_time = record[2]
@@ -320,6 +359,7 @@ for name, records in structured_data:
         # print(name,new_hour,new_minute)
             # **修改上班时间**
         record[2] = f"{new_hour:02d}:{new_minute:02d}"
+    """
 
     # **合并相同名字的记录**
     if name in merged_data:
@@ -430,7 +470,9 @@ if final_mention_list:
     with open(f"CozyRecordMention.txt", "w", encoding="utf-8") as f:
         for sublist in final_mention_list:
             f.write(" ".join(map(str, sublist)) + "\n")  # 用空格分隔元素，并换行
+    # 同时打开两个文件（无需等待）
+    subprocess.Popen(['notepad.exe', "CozyRecordMention.txt"])
 
-# 同时打开两个文件（无需等待）
-subprocess.Popen(['notepad.exe', "CozyRecordMention.txt"])
+
+
 subprocess.Popen(['start', 'excel.exe', output_xlsx], shell=True)
