@@ -10,12 +10,42 @@ from datetime import datetime,timedelta
 from openpyxl.utils import get_column_letter  # 新增导入
 
 
+#　TKデフォルト、ファイルを開く。
+root = tk.Tk()
+root.withdraw()
+root.lift()  # 提升窗口
+root.attributes('-topmost', True)  # 置顶窗口
+
+pdf_path = filedialog.askopenfilename(title="PDFデータをお選びください。",filetypes=[("pdfファイル","*.pdf")],defaultextension=".pdf")
+root.destroy()  # 关闭主窗口
+print(pdf_path)
+
+# **🔹 合并相同名字的出勤记录**
+merged_data = {}
+
+
+output_xlsx = "CCMacro_2025_02test.xlsm"
+# 在现有代码的 structured_array = ... 之后添加以下内容
+
+# 创建日期匹配正则（优化版）
+date_pattern = re.compile(r"(\d{1,2})日")  # 匹配 "x日" 格式
+
+
+
+# 结果存储
+structured_data = []
+current_group = None
+
+#時間now
 now = datetime.now()
+#　作業時間処理（前月）
 opration_date = (now.replace(day=1) - timedelta(days=1)).replace(day=1)
 print(opration_date)  # 输出：2025-01-01 16:23:00
 
+#　エラーメッセージリスト（txt用）
 final_mention_list = []
 
+#　ファイル
 wb = openpyxl.load_workbook("CCtestM.xlsm", keep_vba=True)
 source = wb["99999　ニッセープロダクツ"]
 number_master_sheet = wb['Number_Master']
@@ -23,6 +53,7 @@ number_name_dict = {}
 name_now = None
 last_name = None  # 记录名字
 
+#　NP番号DICT処理　（MASTER）
 for row in range(1, number_master_sheet.max_row + 1):
     CCNP_number = number_master_sheet.cell(row=row, column=1).value
     staff_name = number_master_sheet.cell(row=row, column=2).value
@@ -48,6 +79,15 @@ def find_NP_number(name, number_name_dict):
     return "不明"
 
 
+#　HHMM処理
+def delta_to_hhmm(delta):
+    if delta.days < 0:
+        return "00:00"
+    total_hours = delta.days * 24 + delta.seconds // 3600
+    minutes = (delta.seconds % 3600) // 60
+    return f"{total_hours:02d}:{minutes:02d}"
+
+#　退勤時間10分延長
 def adjust_off_time(time_str):
     """退勤时间增加10分钟"""
     try:
@@ -74,6 +114,7 @@ def adjust_off_time(time_str):
         return time_str  # 保持原始值
 
 
+#　0SHEET書き込み作業
 def write_0sheet(wb):
     ws = wb["0SHEET"]
     # 修正列字母生成方式
@@ -98,7 +139,7 @@ def write_0sheet(wb):
                 # 修改后的时间计算部分
                 try:
                     start = datetime.strptime(record[2].strip(), "%H:%M")
-                    end = datetime.strptime(record[3].strip(), "%H:%M") + timedelta(minutes=10)
+                    end = datetime.strptime(record[3].strip(), "%H:%M")
 
                     # 处理跨日
                     if end < start:
@@ -112,7 +153,7 @@ def write_0sheet(wb):
                     if work_delta.total_seconds() < 0:
                         raise ValueError(f"工作时间不足1小时（总时长：{total_delta}）")
 
-                    daily_hours[day] = round(work_delta.total_seconds() / 3600, 2)
+                    daily_hours[day] = delta_to_hhmm(work_delta)
 
                 except ValueError as e:
                     error_msg = f"工时计算错误: {str(e)}"
@@ -136,21 +177,13 @@ def write_0sheet(wb):
                 continue
 
             if day in daily_hours:
+                temp_time = datetime.strptime(daily_hours[day], "%H:%M").time()
                 ws.cell(
                     row=row_idx,
                     column=4 + day,  # 直接使用列号更可靠
-                    value=daily_hours[day]
+                    value=temp_time
                 )
 
-
-root = tk.Tk()
-root.withdraw()
-root.lift()  # 提升窗口
-root.attributes('-topmost', True)  # 置顶窗口
-
-pdf_path = filedialog.askopenfilename(title="PDFデータをお選びください。",filetypes=[("pdfファイル","*.pdf")],defaultextension=".pdf")
-root.destroy()  # 关闭主窗口
-print(pdf_path)
 
 
 # 读取 PDF 并提取文本
@@ -160,10 +193,6 @@ with fitz.open(pdf_path) as doc:
         page = doc[page_num]
         text = page.get_text("text")
         data.extend(text.split("\n"))  # 按行拆分文本
-
-# 结果存储
-structured_data = []
-current_group = None
 
 for item in data:
     if isinstance(item, str) and item.startswith("NP"):
@@ -180,8 +209,7 @@ for item in data:
 if current_group:
     structured_data.append(current_group)
 
-# **🔹 合并相同名字的出勤记录**
-merged_data = {}
+
 
 for name, records in structured_data:
     # **🔴 如果 "name" 以 "合計" 结尾，则跳过**
@@ -265,13 +293,6 @@ for i in structured_array:
     n += 1
 """
 
-output_xlsx = "CCMacro_2025_02test.xlsm"
-# 在现有代码的 structured_array = ... 之后添加以下内容
-
-# 创建日期匹配正则（优化版）
-date_pattern = re.compile(r"(\d{1,2})日")  # 匹配 "x日" 格式
-
-
 # 时间补零函数
 def zero_pad_time(time_str):
     """将 9:5 格式补零为 09:05"""
@@ -343,7 +364,6 @@ for idx, (name, np_number, records) in enumerate(structured_array, start=1):
                         error_msg
                     ))
 
-
     except Exception as e:
         error_msg = f"工作表创建失败: {str(e)}"
         final_mention_list.append((name, np_number, "", error_msg))
@@ -353,14 +373,11 @@ for idx, (name, np_number, records) in enumerate(structured_array, start=1):
 write_0sheet(wb)
 wb.save(output_xlsx)
 
-
 if final_mention_list:
     with open(f"CozyRecordMention.txt", "w", encoding="utf-8") as f:
         for sublist in final_mention_list:
             f.write(" ".join(map(str, sublist)) + "\n")  # 用空格分隔元素，并换行
 
-
 # 同时打开两个文件（无需等待）
-
 subprocess.Popen(['notepad.exe', "CozyRecordMention.txt"])
 subprocess.Popen(['start', 'excel.exe', output_xlsx], shell=True)
