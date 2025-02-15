@@ -62,6 +62,34 @@ for row in range(1, number_master_sheet.max_row + 1):
     temp = {CCNP_number:staff_name}
     number_name_dict.update(temp)
 
+
+
+
+
+    """
+    要实现将包含全角冒号或其它非标准格式的时间字符串（如8：30）转换为datetime.timedelta类型，可以按照以下方案实现：
+    """
+def custom_timedelta_parser(time_str: str) -> timedelta:
+    """支持全角冒号和紧凑格式的时间转换"""
+    # 统一符号和格式处理
+    clean_str = time_str.replace("：", ":")  # 替换全角冒号
+    if ':' not in clean_str:  # 处理类似"0830"的格式
+        if len(clean_str) < 3:
+            clean_str = f"{clean_str.zfill(2)}:00"  # "8"→"08:00"
+        else:
+            clean_str = f"{clean_str[:-2].zfill(2)}:{clean_str[-2:]}"  # "830"→"08:30"
+
+    # 分割并转换为timedelta
+    parts = clean_str.split(':')
+    if len(parts) != 2:
+        raise ValueError(f"无效时间格式: {time_str}")
+
+    return timedelta(
+        hours=int(parts[0]),
+        minutes=int(parts[1])
+    )
+
+
 """
 根据您的需求，我们可以编写一个函数来实现这个功能。
 这个函数将接受name作为参数，遍历字典，查找匹配的staff_name，
@@ -163,10 +191,10 @@ def write_0sheet(wb):
                     final_mention_list.append((name, np_number, record, error_msg))
                     daily_hours[day] = 0  # 按0小时记录或保持为负值
 
-                print(start)
-                print(end)
-                print(work_delta)
-                print(daily_hours[day])
+                # print(start)
+                # print(end)
+                # print(work_delta)
+                # print(daily_hours[day])
 
             except Exception as e:
                 error_msg = f"记录处理失败: {str(e)}"
@@ -215,7 +243,7 @@ if current_group:
 
 
 for name, records in structured_data:
-    print(name,records)
+    # print(name,records)
 
     # **🔴 如果 "name" 以 "合計" 结尾，则跳过**
     if name.endswith("合計"):
@@ -249,49 +277,55 @@ for name, records in structured_data:
         print(f"Skipping group {name} due to no valid records")
         continue
 
-    # **调整上班时间**
+    # 重要ファンクション：出勤、退勤時間変換。
     for record in filtered_records:
         work_start_hour = record[1][:2]  # 时间段开始时间 (前 2 位小时)
+        work_start_time = record[1][:4]  # 时间段开始时间 (前 2 位小时)
+        shift_start_time = custom_timedelta_parser(work_start_time)
+        # 作業中
+
         arrival_time = record[2]
         arrival_hour, arrival_minute = map(int, record[2].split(":"))  # 上班时间
         new_hour = arrival_hour
-        print(name)
-        print(name_now)
-        print(name,"start hour", work_start_hour)
-        print(name,"arrival hour", arrival_hour)
-        #print(number_name_dict)
-        print(name)
+        new_minute = arrival_minute
+        # print(name)
+        # print(name_now)
+        # print(name,"start hour", work_start_hour)
+        # print(name,"arrival hour", arrival_hour)
+        # #print(number_name_dict)
+        # print(name)
         NP__number = find_NP_number(name,number_name_dict)
 
         # **如果上班时间早于时间段开始时间**
-        print("判断開始")
+        # print("判断開始")
         try:
             if work_start_hour == "00" and arrival_hour > 19:
-                print("判断開始261yes",work_start_hour,arrival_hour)
+                # print("判断開始261yes",work_start_hour,arrival_hour)
 
                 arrival_hour = -1
 
             if arrival_hour < int(work_start_hour):
-                print("判断開始266yes",arrival_hour,work_start_hour)
+                # print("判断開始266yes",arrival_hour,work_start_hour)
                 new_hour = int(work_start_hour)
+                new_minute = 0
                 arrival_hour = None
                 work_start_hour = None
         except ValueError:
             final_mention_list.append((name,NP__number,record,"勤務区分エラーです。手動で確認し、出勤時間を修正してください。"))
-            continue
+
 
             # **如果是 23 点，改为 00:00**
 
-        print(name,new_hour)
+        # print(name,new_hour,new_minute)
             # **修改上班时间**
-        record[2] = f"{new_hour:02d}:00"
+        record[2] = f"{new_hour:02d}:{new_minute:02d}"
 
     # **合并相同名字的记录**
     if name in merged_data:
-        print("**合并相同名字的记录**291 if",name,merged_data)
+        #print("**合并相同名字的记录**291 if",name,merged_data)
         merged_data[name] = np.vstack((merged_data[name], filtered_records))
     else:
-        print("**合并相同名字的记录**294 else",name,merged_data)
+        #print("**合并相同名字的记录**294 else",name,merged_data)
         merged_data[name] = np.array(filtered_records, dtype=object)
 
 # **转换为 NumPy 数组**
