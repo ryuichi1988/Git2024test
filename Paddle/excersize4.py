@@ -148,11 +148,11 @@ def write_0sheet(wb):
     ws = wb["0SHEET"]
     sheet0_d1_value = opration_date.strftime("%Y年%m月")
     ws["D1"].value = sheet0_d1_value
-    if len(structured_array) < 200:
-        for temp_row in range(len(structured_array) ,203 , 1):
-            ws.row_dimensions[temp_row].hidden = True
-    else:
-        final_mention_list.append("0sheetの行が足りない。ｽﾀｯﾌ数200超えています？？")
+    # if len(structured_array) < 200:
+    #     for temp_row in range(len(structured_array) ,203 , 1):
+    #         ws.row_dimensions[temp_row].hidden = True
+    # else:
+    #     final_mention_list.append("0sheetの行が足りない。ｽﾀｯﾌ数200超えています？？")
 
 
     # 修正列字母生成方式
@@ -162,7 +162,7 @@ def write_0sheet(wb):
         ws[f'C{row_idx}'] = np_number
         ws[f'D{row_idx}'] = name
         ws[f'AN{row_idx}'] = Person_Sum_Time_List[row_idx-4]
-
+"""
         daily_hours = {}
 
         for record in records:
@@ -228,7 +228,7 @@ def write_0sheet(wb):
                     value=temp_time
                 )
 
-
+"""
 
 # 读取 PDF 并提取文本
 with fitz.open(pdf_path) as doc:
